@@ -137,7 +137,7 @@ def build_search_url(
         params["max_price"] = int(max_p)
     if pg and int(pg) > 1:
         params["page"] = int(pg)
-    if s and str(s).strip():
+    if s and str(s).strip() and str(s).strip().lower() not in ("new", "newest", "default", "none"):
         params["sort"] = str(s).strip()
 
     full_url = urljoin(base_url, path)

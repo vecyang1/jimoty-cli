@@ -53,6 +53,9 @@ Subcommands:
   search      Search Jimoty listings with SSR HTML parsing, municipality codes, and price filters
   get         Retrieve full structured details for a specific listing URL, article ID, or HTML file
   diagnose    Run deterministic diagnostic triage auditing legal paperwork, mechanics, and seller trust
+  photos      List high-res photo URLs, discover external media (YouTube/Google Drive), or download offline
+  seller      Audit seller identity (ID/SMS badges), transaction policy, and recent buyer reviews
+  watch       Continuously monitor search results for new listings, running automated diagnostic triage
   template    Generate culturally polite Japanese inquiry messages tailored to the listing
   checklist   Generate physical on-site inspection safety checklist for vehicle pickup
   config      Display or query operational configuration defaults (SSOT) and masked proxy
@@ -152,9 +155,54 @@ jimoty diagnose tests/fixtures/detail_junk_no_papers.html --json
 
 ---
 
-### Subcommand 4: `template`
+### Subcommand 4: `photos`
 
-Generates culturally idiomatic Japanese inquiry messages (`敬語`) tailored to the specific seller, vehicle, price, and location.
+Inspects high-resolution images (`large_url`, `slide_url`), discovers linked video demonstrations (YouTube) or external cloud condition albums (Google Drive), and downloads photos offline for condition evaluation.
+
+```bash
+# List all photo URLs and external video/cloud albums
+jimoty photos https://jmty.jp/kanagawa/sale-bik/article-1s8b3o
+
+# Download all photos into a local directory for detailed offline visual inspection
+jimoty photos https://jmty.jp/kanagawa/sale-bik/article-1s8b3o --download-dir ./bike_photos
+
+# Output photo metadata and media links as JSON
+jimoty photos https://jmty.jp/kanagawa/sale-bik/article-1s8b3o --json
+```
+
+---
+
+### Subcommand 5: `seller`
+
+Audits seller trustworthiness dossier, including verified government identity badges (`本人確認済`), SMS authentication status (`電話番号認証済`), rating breakdown (good/normal/bad), seller bio policy (pickup hours, delivery availability, no claims), and recent buyer evaluations.
+
+```bash
+# Display terminal formatted seller reputation dossier
+jimoty seller https://jmty.jp/kanagawa/sale-bik/article-1s8b3o
+
+# Output seller dossier as structured JSON
+jimoty seller https://jmty.jp/kanagawa/sale-bik/article-1s8b3o --json
+```
+
+---
+
+### Subcommand 6: `watch`
+
+Continuous real-time monitoring daemon that periodically polls search queries, tracks seen article IDs, and automatically executes diagnostic triage on new arrivals.
+
+```bash
+# One-shot monitor pass over Chigasaki scooters under 60,000 JPY
+jimoty watch --municipality chigasaki --max-price 60000 --once
+
+# Continuous live daemon polling every 30s
+jimoty watch --municipality chigasaki --max-price 50000 --interval 30
+```
+
+---
+
+### Subcommand 7: `template`
+
+Generates culturally idiomatic Japanese inquiry messages (`敬語`) tailored to the specific seller, vehicle, price, and location. Automatically adapts to late-night courtesy greetings (`夜分遅くに恐れ入ります`) and stale listing inquiry (`まだお手元にございますでしょうか`).
 
 ```bash
 # 1. Initial direct pickup inquiry
@@ -177,7 +225,7 @@ jimoty template tests/fixtures/detail_4st_fi_jog.html --type initial --json
 
 ---
 
-### Subcommand 5: `checklist`
+### Subcommand 8: `checklist`
 
 Generates an on-site physical vehicle pickup safety checklist guarding the buyer against hidden defects, mechanical breakdowns, and legal issues.
 
@@ -198,7 +246,7 @@ The checklist dynamically adapts to vehicle attributes:
 
 ---
 
-### Subcommand 6: `config`
+### Subcommand 9: `config`
 
 Queries the Single Source of Truth (SSOT) configuration and verifies proxy masking:
 
@@ -277,7 +325,7 @@ if report.verdict.value == "RECOMMENDED":
 
 ## 5. Diagnostic Rules Reference
 
-The triage engine enforces a deterministic rule catalog across four distinct domains:
+The triage engine enforces a deterministic rule catalog across five distinct domains:
 
 ### 1. Legal & Paperwork Rules
 - **`DOC-001-MISSING_PAPERS`** (**FATAL**):
@@ -287,8 +335,8 @@ The triage engine enforces a deterministic rule catalog across four distinct dom
   - *Trigger keywords*: `鍵なし`, `キー欠品`, `キーなし`.
   - *Effect*: Flags high maintenance expense for replacing the key cylinder, ignition, and fuel tank locks.
 - **`DOC-003-VALID_PAPERS`** (INFO / WARNING):
-  - *Trigger keywords*: `廃車証明書`, `廃車申告受付書`, `譲渡証明書`, `標識交付証明書`.
-  - *Effect*: Confirms presence of official municipal paperwork. If paperwork is unmentioned, raises a WARNING cautioning the buyer to verify with the seller before meetup.
+  - *Trigger keywords*: `廃車証明書`, `廃車申告受付書`, `譲渡証明書`, `標識交付証明書`, `販売証明書`, `登録書類`, `バイク登録書類`, `廃車済み`, `返納証明書`.
+  - *Effect*: Confirms presence of official municipal paperwork or dealer sales certificate. If paperwork is unmentioned, raises a WARNING cautioning the buyer to verify with the seller before meetup.
 
 ### 2. Mechanical Triage Rules
 - **`MECH-001-ENGINE_SEIZED`** (**FATAL**):
@@ -298,8 +346,8 @@ The triage engine enforces a deterministic rule catalog across four distinct dom
   - *Trigger keywords*: `不動`, `ジャンク`, `部品取り`, `かからない`, `エンジンかかりません`.
   - *Verdict*: Triggers `FATAL_REJECT` for users seeking operational daily transportation.
 - **`MECH-003-RUNNING_CONFIRMED`** (INFO / Score Boost):
-  - *Trigger keywords*: `実動`, `セル一発`, `キック一発`, `走る曲がる止まる`, `好調`.
-  - *Effect*: Adds positive score points, confirming operational road readiness.
+  - *Trigger keywords*: `実動`, `セル一発`, `キック一発`, `走る曲がる止まる`, `好調`, `走行できます`, `走行可能`, `走行確認`, `セル・キック始動`, `セル始動`, `キック始動`, `試乗ok`, `最高速度`.
+  - *Effect*: Adds positive score points, confirming operational road readiness and successful test riding.
 - **`MECH-004-BATTERY_ISSUE`** (WARNING):
   - *Trigger keywords*: `バッテリー上がり`, `バッテリー要交換`, `バッテリー死んでます`.
   - *Effect*: Highlights a minor, manageable issue that does not disqualify the vehicle if kick-start or engine compression is functional.
@@ -307,7 +355,7 @@ The triage engine enforces a deterministic rule catalog across four distinct dom
 ### 3. Powertrain Classification Rules
 - **`ENGINE-ENG-001-4S_FI`** (INFO):
   - *Trigger keywords*: `4スト`, `4st`, `4サイクル`, `FI`, `インジェクション`.
-  - *Classification*: Modern 4-stroke Electronic Fuel Injection. High fuel efficiency (50+ km/L), low emissions, excellent cold-weather reliability, ideal for daily commuters (Honda Today AF67, Yamaha Jog SA36J/SA39J).
+  - *Classification*: Modern 4-stroke Electronic Fuel Injection. High fuel efficiency (50+ km/L), low emissions, excellent cold-weather reliability, ideal for daily commuters (Honda Today AF67, Yamaha Jog SA36J/SA39J/SA55J).
 - **`ENGINE-ENG-002-2S_CARB`** (INFO):
   - *Trigger keywords*: `2スト`, `2st`, `2サイクル`, `キャブ`, `キャブレター`.
   - *Classification*: 2-stroke carbureted engine. Rapid acceleration and light weight, but requires separate 2-stroke engine oil refills, has higher fuel consumption, and requires seasonal carburetor tuning.
@@ -317,10 +365,18 @@ The triage engine enforces a deterministic rule catalog across four distinct dom
   - *Audit*: Inspects the `identified` flag (`本人確認済` badge).
   - *Effect*: Unverified sellers receive a penalty warning, as Jimoty identity verification requires government ID submission.
 - **`SELLER-002-RATING_RATIO`** (INFO / WARNING):
-  - *Audit*: Computes ratio of good to bad ratings (`good_ratings / (good_ratings + bad_ratings)`).
+  - *Audit*: Computes ratio of good to total reviews (`good_ratings / (good_ratings + normal_ratings + bad_ratings)`).
   - *Effect*: Sellers with a bad rating ratio > 10% receive a cautionary warning.
 - **`SELLER-003-UNVERIFIED_SUSPICIOUS`** (WARNING):
   - *Audit*: Flags accounts with zero ratings and no identity verification selling high-value goods.
+
+### 5. Listing Freshness & Activity Rules
+- **`ACTIVITY-001-STALE_LISTING`** (INFO):
+  - *Audit*: Evaluates elapsed days since posting (flags listings older than 30 days).
+  - *Effect*: Informs buyer that vehicle may have sat idle or battery may have discharged; suggests asking if vehicle is still available (`まだお手元にございますでしょうか`).
+- **`ACTIVITY-002-POPULAR_RUSH`** (INFO / Score Boost):
+  - *Audit*: Evaluates favorites count (`favorites_count >= 10`) or inquiry rush badge (`inquiry_rush=True`).
+  - *Effect*: Informs buyer of high market competition, recommending prompt initial message and quick meetup proposal.
 
 ---
 

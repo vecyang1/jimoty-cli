@@ -100,3 +100,63 @@ class TestCliInterface:
         )
         assert result.returncode == 0
         assert "kanagawa" in result.stdout.lower() or "chigasaki" in result.stdout.lower()
+
+    def test_photos_subcommand_help(self) -> None:
+        """Verify jimoty photos --help displays arguments."""
+        result = subprocess.run(
+            [sys.executable, "-m", "jimoty", "photos", "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert "--download-dir" in result.stdout
+        assert "--json" in result.stdout
+
+    def test_photos_subcommand_fixture_json(self) -> None:
+        """Verify jimoty photos with a local fixture outputs valid JSON."""
+        fixture_path = str(Path(__file__).parent / "fixtures" / "detail_4st_fi_jog.html")
+        result = subprocess.run(
+            [sys.executable, "-m", "jimoty", "photos", fixture_path, "--json"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert "photos" in data
+        assert "photos_count" in data
+
+    def test_seller_subcommand_help(self) -> None:
+        """Verify jimoty seller --help displays arguments."""
+        result = subprocess.run(
+            [sys.executable, "-m", "jimoty", "seller", "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert "--json" in result.stdout
+
+    def test_seller_subcommand_fixture_json(self) -> None:
+        """Verify jimoty seller with a local fixture outputs valid seller JSON."""
+        fixture_path = str(Path(__file__).parent / "fixtures" / "detail_4st_fi_jog.html")
+        result = subprocess.run(
+            [sys.executable, "-m", "jimoty", "seller", fixture_path, "--json"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert "name" in data
+        assert "good_ratings" in data
+
+    def test_watch_subcommand_help(self) -> None:
+        """Verify jimoty watch --help displays arguments."""
+        result = subprocess.run(
+            [sys.executable, "-m", "jimoty", "watch", "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert "--municipality" in result.stdout
+        assert "--interval" in result.stdout
+        assert "--once" in result.stdout
+

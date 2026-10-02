@@ -339,3 +339,42 @@ class TestUtilityFunctions:
         assert loc.prefecture == "神奈川県"
         assert loc.city == "茅ヶ崎市"
         assert loc.station == "茅ヶ崎駅"
+
+    def test_extract_video_and_drive_links(self) -> None:
+        """Verify extraction of YouTube operational videos and Google Drive albums from description."""
+        html = """<html><body><script id="__NEXT_DATA__" type="application/json">
+        {"props": {"pageProps": {"articleResults": {
+            "article": {
+                "id": "test-vid",
+                "title": "ヤマハ JOG 動画あり",
+                "price": 50000,
+                "text": "動作動画はこちら\\nhttps://youtu.be/test12345\\n追加画像フォルダ\\nhttps://drive.google.com/drive/folders/abcdef"
+            }
+        }}}}
+        </script></body></html>"""
+        detail = parse_detail_page(html)
+        assert len(detail.video_urls) == 1
+        assert "youtu.be/test12345" in detail.video_urls[0]
+        assert len(detail.drive_urls) == 1
+        assert "drive.google.com" in detail.drive_urls[0]
+
+    def test_filter_alliance_ads_in_search_results(self) -> None:
+        """Verify commercial recruitment and sponsored alliance ads are filtered from search listings."""
+        html = """<html><body>
+        <div class="p-articles-list">
+          <div class="p-articles-list-item">
+            <div class="p-item-title"><a href="/kanagawa/sale-bik/article-bike01">実動バイク</a></div>
+            <div class="p-item-most-important">30,000円</div>
+          </div>
+          <div class="p-articles-list-item">
+            <div class="p-item-alliance-tag">PR</div>
+            <div class="p-item-title"><a href="/kanagawa/rec-lig/alliance-rec_123">工場組立ワーク募集</a></div>
+            <div class="p-item-most-important">月給25万円</div>
+          </div>
+        </div>
+        </body></html>"""
+        items = parse_search_page(html)
+        assert len(items) == 1
+        assert items[0].id == "bike01"
+        assert items[0].title == "実動バイク"
+

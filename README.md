@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-100%2F100%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-114%2F114%20passing-brightgreen.svg)]()
 
 > **Agent-native CLI tool and reusable Python library for searching, scraping, monitoring, and evaluating vehicle and goods listings on Japan's Jimoty (`jmty.jp`) platform.**
 
@@ -19,9 +19,12 @@
   - [1. Searching Listings (`search`)](#1-searching-listings-search)
   - [2. Inspecting Details (`get`)](#2-inspecting-details-get)
   - [3. Deterministic Safety Triage (`diagnose`)](#3-deterministic-safety-triage-diagnose)
-  - [4. Japanese Inquiry Messages (`template`)](#4-japanese-inquiry-messages-template)
-  - [5. Physical On-Site Inspection Checklist (`checklist`)](#5-physical-on-site-inspection-checklist-checklist)
-  - [6. Operational Configuration (`config`)](#6-operational-configuration-config)
+  - [4. High-Res Photos & Media (`photos`)](#4-high-res-photos--media-photos)
+  - [5. Seller Reputation Dossier (`seller`)](#5-seller-reputation-dossier-seller)
+  - [6. Real-Time Monitor (`watch`)](#6-real-time-monitor-watch)
+  - [7. Japanese Inquiry Messages (`template`)](#7-japanese-inquiry-messages-template)
+  - [8. Physical On-Site Inspection Checklist (`checklist`)](#8-physical-on-site-inspection-checklist-checklist)
+  - [9. Operational Configuration (`config`)](#9-operational-configuration-config)
 - [Python SDK Usage](#python-sdk-usage)
   - [Search & Extraction](#search--extraction)
   - [Running Diagnostics](#running-diagnostics)
@@ -167,12 +170,51 @@ Example JSON diagnostic output:
 }
 ```
 
-### 4. Japanese Inquiry Messages (`template`)
+### 4. High-Res Photos & Media (`photos`)
+
+Inspect all high-resolution photos, discover operational YouTube videos, and download images offline:
+
+```bash
+# List all photo URLs and external video/cloud albums
+jimoty photos https://jmty.jp/kanagawa/sale-bik/article-1s8b3o
+
+# Download all photos into a local folder for condition inspection
+jimoty photos https://jmty.jp/kanagawa/sale-bik/article-1s8b3o --download-dir ./bike_photos
+
+# Output photo metadata and media links as JSON
+jimoty photos https://jmty.jp/kanagawa/sale-bik/article-1s8b3o --json
+```
+
+### 5. Seller Reputation Dossier (`seller`)
+
+Inspect verified identity credentials, SMS authentication, rating breakdown, transaction policy, and recent buyer reviews:
+
+```bash
+# Inspect seller reputation dossier
+jimoty seller https://jmty.jp/kanagawa/sale-bik/article-1s8b3o
+
+# Output seller dossier as JSON
+jimoty seller https://jmty.jp/kanagawa/sale-bik/article-1s8b3o --json
+```
+
+### 6. Real-Time Monitor (`watch`)
+
+Continuously monitor search results for new listings, immediately executing automated diagnostics:
+
+```bash
+# Run one-shot monitor pass over Chigasaki under 60,000 JPY
+jimoty watch --municipality chigasaki --max-price 60000 --once
+
+# Continuous live daemon polling every 30s
+jimoty watch --municipality chigasaki --max-price 50000 --interval 30
+```
+
+### 7. Japanese Inquiry Messages (`template`)
 
 Generate context-aware, respectful Japanese keigo (`敬語`) messages for marketplace communication:
 
 ```bash
-# 1. Initial direct pickup inquiry
+# 1. Initial direct pickup inquiry (auto-adapts late-night courtesy & stale listing inquiry)
 jimoty template tests/fixtures/detail_4st_fi_jog.html --type initial --buyer-name "田中"
 
 # 2. Document & key count verification
@@ -182,7 +224,7 @@ jimoty template tests/fixtures/detail_4st_fi_jog.html --type paperwork
 jimoty template tests/fixtures/detail_4st_fi_jog.html --type schedule --date "今週土曜日 14:00"
 ```
 
-### 5. Physical On-Site Inspection Checklist (`checklist`)
+### 8. Physical On-Site Inspection Checklist (`checklist`)
 
 Generate a 5-category safety checklist to guard against defects during in-person pickup:
 
@@ -197,7 +239,7 @@ jimoty checklist tests/fixtures/detail_4st_fi_jog.html --format markdown > inspe
 jimoty checklist --json
 ```
 
-### 6. Operational Configuration (`config`)
+### 9. Operational Configuration (`config`)
 
 Inspect the Single Source of Truth (SSOT) configuration and verify proxy resolution:
 
@@ -298,6 +340,8 @@ print(md_checklist)
 | `SELLER-001-VERIFIED_ID` | Seller | INFO / WARNING | Audits Jimoty verified identity badge (`本人確認済`). Flags unverified sellers. |
 | `SELLER-002-RATING_RATIO` | Seller | INFO / WARNING | Evaluates positive/negative rating ratios (penalizes high bad rating percentage). |
 | `SELLER-003-UNVERIFIED_SUSPICIOUS` | Seller | WARNING | Flags unverified sellers with zero or poor transaction history. |
+| `ACTIVITY-001-STALE_LISTING` | Activity | INFO / WARNING | Audits elapsed days since last update; penalizes stale posts (>=60d, >=120d) and caps verdict at `CAUTION`. |
+| `ACTIVITY-002-TIME_COURTESY` | Activity | INFO | Checks current JST hour; advises on night/early morning (22:00-07:00) etiquette to prevent seller ghosting. |
 
 ---
 

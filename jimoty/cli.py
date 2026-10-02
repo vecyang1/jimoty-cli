@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from jimoty.checklist import (
@@ -32,7 +33,7 @@ from jimoty.config import (
     resolve_category,
     resolve_municipality,
 )
-from jimoty.diagnostics import DiagnosticEngine
+from jimoty.diagnostics import DiagnosticEngine, Verdict
 from jimoty.models import ListingDetail, SearchQuery
 from jimoty.parser import ParserError, parse_detail_page, parse_search_page
 from jimoty.templates import generate_inquiry_template, list_template_types
@@ -114,15 +115,19 @@ def _handle_get(args: argparse.Namespace) -> int:
     else:
         price_disp = "無料 (0円)" if detail.is_free else detail.price_text
         seller_name = detail.seller.name if detail.seller else "N/A"
-        seller_ident = (
-            "本人確認済"
-            if (detail.seller and detail.seller.identified)
-            else "未認証"
-        )
+        badges = []
+        if detail.seller and detail.seller.identified:
+            badges.append("本人確認済")
+        if detail.seller and detail.seller.sms_authenticated:
+            badges.append("SMS認証済")
+        if detail.seller and detail.seller.is_antique_dealer:
+            badges.append("古物商")
+        seller_ident = ", ".join(badges) if badges else "未認証"
+
         ratings_disp = (
-            f"良い:{detail.seller.good_ratings} / 悪い:{detail.seller.bad_ratings}"
-            if detail.seller
-            else "N/A"
+            f"良い:{detail.seller.good_ratings} / 普通:{detail.seller.normal_ratings} / 悪い:{detail.seller.bad_ratings} (良好率 {detail.seller.positive_ratio*100:.1f}%)"
+            if detail.seller and detail.seller.total_ratings > 0
+            else "評価なし"
         )
 
         print("=" * 78)
@@ -136,12 +141,223 @@ def _handle_get(args: argparse.Namespace) -> int:
             up_str = detail.updated_at.strftime("%Y-%m-%d %H:%M") if detail.updated_at else "なし"
             print(f"  Timeline:    投稿: {post_str} | 最終更新: {up_str}")
         print(f"  Seller:      {seller_name} ({seller_ident}, {ratings_disp})")
+        if detail.favorites_count or detail.inquiry_rush:
+            rush_str = " (問い合わせ殺到中!)" if detail.inquiry_rush else ""
+            print(f"  Popularity:  お気に入り: {detail.favorites_count}人{rush_str}")
+        if detail.delivery_notes or detail.delivery_available:
+            print(f"  Delivery:    {detail.delivery_notes or '配送対応可'}")
+        if detail.image_urls:
+            print(f"  Photos:      {len(detail.image_urls)}枚の高画質写真")
+        if detail.video_urls:
+            print(f"  Video:       {', '.join(detail.video_urls)}")
+        if detail.drive_urls:
+            print(f"  Cloud Album: {', '.join(detail.drive_urls)}")
         print(f"  URL:         {detail.url}")
         print("-" * 78)
         print("  Description:")
         for line in detail.description.splitlines():
             print(f"    {line}")
         print("=" * 78)
+
+    return 0
+
+
+def _handle_photos(args: argparse.Namespace) -> int:
+    """Handle `jimoty photos` subcommand to inspect and download high-resolution photos."""
+    detail = _load_detail(args.url_or_id_or_file, proxy=args.proxy)
+
+    if args.json:
+        payload = {
+            "item_id": detail.id,
+            "title": detail.title,
+            "photos_count": len(detail.image_urls),
+            "photos": detail.image_urls,
+            "video_urls": detail.video_urls,
+            "drive_urls": detail.drive_urls,
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    print("=" * 78)
+    print(f"  PHOTOS & MEDIA: [{detail.id}] {detail.title}")
+    print("=" * 78)
+    print(f"  Total Photos: {len(detail.image_urls)} 枚")
+    if detail.video_urls:
+        print(f"  Video Links:  {', '.join(detail.video_urls)}")
+    if detail.drive_urls:
+        print(f"  Cloud Albums: {', '.join(detail.drive_urls)}")
+    print("-" * 78)
+
+    if not detail.image_urls:
+        print("  写真は見つかりませんでした。")
+        return 0
+
+    for idx, url in enumerate(detail.image_urls, 1):
+        print(f"  [{idx:02d}] {url}")
+
+    if args.download_dir:
+        import urllib.request
+        os.makedirs(args.download_dir, exist_ok=True)
+        print("-" * 78)
+        print(f"  Downloading {len(detail.image_urls)} photos to: {args.download_dir}")
+        downloaded = 0
+        for idx, img_url in enumerate(detail.image_urls, 1):
+            ext = ".jpg"
+            if ".png" in img_url.lower():
+                ext = ".png"
+            dest = os.path.join(args.download_dir, f"photo_{idx:02d}{ext}")
+            try:
+                req = urllib.request.Request(img_url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=15) as resp, open(dest, "wb") as out_f:
+                    out_f.write(resp.read())
+                print(f"    ✓ [{idx:02d}/{len(detail.image_urls):02d}] Saved {os.path.basename(dest)}")
+                downloaded += 1
+            except Exception as e:
+                print(f"    ✗ [{idx:02d}/{len(detail.image_urls):02d}] Failed {img_url}: {e}")
+        print(f"  Successfully downloaded {downloaded}/{len(detail.image_urls)} photos.")
+
+    print("=" * 78)
+    return 0
+
+
+def _handle_seller(args: argparse.Namespace) -> int:
+    """Handle `jimoty seller` subcommand to display detailed seller dossier and reviews."""
+    detail = _load_detail(args.url_or_id_or_file, proxy=args.proxy)
+    seller = detail.seller
+
+    if not seller:
+        sys.stderr.write("Error: No seller profile found for this listing.\n")
+        return 1
+
+    if args.json:
+        print(json.dumps(seller.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    print("=" * 78)
+    print(f"  SELLER DOSSIER: {seller.name} (ID: {seller.id or 'N/A'})")
+    print("=" * 78)
+    print(f"  Profile URL:      {seller.url or 'N/A'}")
+
+    badges = []
+    if seller.identified:
+        badges.append("本人確認済 (KYC Verified)")
+    if seller.sms_authenticated:
+        badges.append("SMS認証済 (SMS Verified)")
+    if seller.is_antique_dealer:
+        badges.append("古物商許可 / 登録業者")
+    for b in seller.badge_names:
+        if b not in badges and "本人確認" not in b and "SMS" not in b:
+            badges.append(b)
+
+    badges_str = " | ".join(badges) if badges else "未認証 (No badges)"
+    print(f"  Identity Badges:  {badges_str}")
+
+    ratio_str = f"{seller.positive_ratio * 100:.1f}%" if seller.total_ratings > 0 else "N/A"
+    print(f"  Rating Breakdown: 良い: {seller.good_ratings} | 普通: {seller.normal_ratings} | 悪い: {seller.bad_ratings}")
+    print(f"  Good Rating Rate: {ratio_str} (Total: {seller.total_ratings} 件)")
+    print(f"  Active Listings:  {seller.articles_count} 件出品中")
+
+    if seller.profile_text:
+        print("-" * 78)
+        print("  Seller Profile & Terms:")
+        for line in seller.profile_text.splitlines():
+            print(f"    {line}")
+
+    if seller.evaluations:
+        print("-" * 78)
+        print(f"  Recent Buyer Reviews ({len(seller.evaluations)}):")
+        for ev in seller.evaluations:
+            ev_type = "👍 良い" if ev.get("type") == "good" else "👎 悪い"
+            uname = ev.get("user_name") or "匿名ユーザー"
+            comment = ev.get("comment") or "(コメントなし)"
+            print(f"    [{ev_type}] {uname}: {comment}")
+
+    print("=" * 78)
+    return 0
+
+
+def _handle_watch(args: argparse.Namespace) -> int:
+    """Handle `jimoty watch` subcommand for real-time monitoring of new listings."""
+    import time
+
+    muni = resolve_municipality(args.municipality) if args.municipality else None
+    cat = resolve_category(args.category) if args.category else DEFAULT_CATEGORY
+
+    query = SearchQuery(
+        prefecture=args.prefecture or DEFAULT_PREFECTURE,
+        category=cat,
+        municipality=muni,
+        keyword=args.keyword,
+        min_price=args.min_price,
+        max_price=args.max_price,
+        sort=args.sort if (args.sort and args.sort != "new") else None,
+    )
+
+    cfg = JimotyConfig.from_env()
+    if args.proxy:
+        cfg.proxy = args.proxy
+
+    client = JimotyClient(config=cfg)
+    engine = DiagnosticEngine()
+
+    seen_ids = set()
+    interval = max(5, args.interval or 30)
+
+    target_muni = muni or "all"
+    kw_disp = f"'{query.keyword}'" if query.keyword else "all"
+    print("=" * 78)
+    print("  JIMOTY REAL-TIME LISTING MONITOR (WATCH)")
+    print("=" * 78)
+    print(f"  Prefecture:   {query.prefecture}")
+    print(f"  Municipality: {target_muni}")
+    print(f"  Keyword:      {kw_disp}")
+    print(f"  Max Price:    {query.max_price or 'Any'}")
+    print(f"  Poll Rate:    Every {interval}s")
+    print("  Press Ctrl+C to stop monitoring.")
+    print("=" * 78)
+
+    while True:
+        try:
+            html = client.fetch_search_html(query, proxy=args.proxy)
+            items = parse_search_page(html, base_url=cfg.base_url)
+
+            new_items = []
+            for item in items:
+                if item.id and item.id not in seen_ids:
+                    seen_ids.add(item.id)
+                    new_items.append(item)
+
+            if new_items:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"\n🔔 [{timestamp}] Detected {len(new_items)} new/updated listing(s):")
+                for item in new_items:
+                    report_badge = ""
+                    try:
+                        detail_html = client.fetch_detail_page(item.url, proxy=args.proxy)
+                        det = parse_detail_page(detail_html)
+                        rep = engine.diagnose(det)
+                        verdict_color = "🟢" if rep.verdict == Verdict.RECOMMENDED else ("🟡" if rep.verdict == Verdict.CAUTION else "🔴")
+                        report_badge = f" | {verdict_color} {rep.verdict} ({rep.score}点)"
+                    except Exception:
+                        pass
+
+                    price_str = "無料 (0円)" if item.is_free else item.price_text
+                    print(f"  • [{item.id}] {item.title}")
+                    print(f"    Price: {price_str} | Loc: {item.location_text or 'N/A'}{report_badge}")
+                    print(f"    URL:   {item.url}")
+
+            if args.once:
+                break
+
+            time.sleep(interval)
+        except KeyboardInterrupt:
+            print("\nMonitoring stopped by user.")
+            break
+        except Exception as e:
+            sys.stderr.write(f"Warning during polling: {e}\n")
+            if args.once:
+                return 1
+            time.sleep(interval)
 
     return 0
 
@@ -495,6 +711,134 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output configuration as JSON",
     )
 
+    # -------------------------------------------------------------------------
+    # Subcommand: photos
+    # -------------------------------------------------------------------------
+    photos_parser = subparsers.add_parser(
+        "photos",
+        help="Inspect and optionally download all high-resolution photos and media",
+        description="Inspect and download all high-resolution photos and discover external media (YouTube/Google Drive).",
+    )
+    photos_parser.add_argument(
+        "url_or_id_or_file",
+        metavar="URL_OR_ID_OR_FILE",
+        help="Jimoty listing URL, article ID, or HTML fixture file path",
+    )
+    photos_parser.add_argument(
+        "--download-dir",
+        type=str,
+        default=None,
+        help="Local directory to download all high-resolution photos",
+    )
+    photos_parser.add_argument(
+        "--proxy",
+        type=str,
+        default=None,
+        help="Proxy URL override",
+    )
+    photos_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output photos list and media links as JSON",
+    )
+
+    # -------------------------------------------------------------------------
+    # Subcommand: seller
+    # -------------------------------------------------------------------------
+    seller_parser = subparsers.add_parser(
+        "seller",
+        help="Display comprehensive seller dossier, KYC badges, and buyer reviews",
+        description="Display comprehensive seller reputation, verification badges, transaction history, and buyer reviews.",
+    )
+    seller_parser.add_argument(
+        "url_or_id_or_file",
+        metavar="URL_OR_ID_OR_FILE",
+        help="Jimoty listing URL, article ID, or HTML fixture file path",
+    )
+    seller_parser.add_argument(
+        "--proxy",
+        type=str,
+        default=None,
+        help="Proxy URL override",
+    )
+    seller_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output seller profile and review history as JSON",
+    )
+
+    # -------------------------------------------------------------------------
+    # Subcommand: watch
+    # -------------------------------------------------------------------------
+    watch_parser = subparsers.add_parser(
+        "watch",
+        help="Real-time live monitoring and polling for new or updated listings",
+        description="Continuously poll and monitor Jimoty searches, alerting immediately on new listings with automated diagnostics.",
+    )
+    watch_parser.add_argument(
+        "--municipality",
+        "-m",
+        type=str,
+        default=DEFAULT_MUNICIPALITY,
+        help=f"Municipality slug or keyword (default: '{DEFAULT_MUNICIPALITY}')",
+    )
+    watch_parser.add_argument(
+        "--prefecture",
+        type=str,
+        default=DEFAULT_PREFECTURE,
+        help=f"Prefecture slug (default: '{DEFAULT_PREFECTURE}')",
+    )
+    watch_parser.add_argument(
+        "--category",
+        "-c",
+        type=str,
+        default=DEFAULT_CATEGORY,
+        help=f"Category slug (default: '{DEFAULT_CATEGORY}')",
+    )
+    watch_parser.add_argument(
+        "--keyword",
+        "-k",
+        type=str,
+        default=None,
+        help="Keyword filter",
+    )
+    watch_parser.add_argument(
+        "--max-price",
+        "-p",
+        type=int,
+        default=DEFAULT_MAX_PRICE,
+        help=f"Maximum price in JPY (default: {DEFAULT_MAX_PRICE})",
+    )
+    watch_parser.add_argument(
+        "--min-price",
+        type=int,
+        default=None,
+        help="Minimum price in JPY",
+    )
+    watch_parser.add_argument(
+        "--sort",
+        type=str,
+        default="new",
+        help="Sort order ('new' for newest first)",
+    )
+    watch_parser.add_argument(
+        "--interval",
+        type=int,
+        default=30,
+        help="Polling interval in seconds (default: 30s, min: 5s)",
+    )
+    watch_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Scan once and exit (useful for cron jobs and testing)",
+    )
+    watch_parser.add_argument(
+        "--proxy",
+        type=str,
+        default=None,
+        help="Proxy URL override",
+    )
+
     return parser
 
 
@@ -518,6 +862,9 @@ def main(args: Optional[List[str]] = None) -> int:
         "search": _handle_search,
         "get": _handle_get,
         "diagnose": _handle_diagnose,
+        "photos": _handle_photos,
+        "seller": _handle_seller,
+        "watch": _handle_watch,
         "template": _handle_template,
         "checklist": _handle_checklist,
         "config": _handle_config,

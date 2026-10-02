@@ -160,6 +160,23 @@ class TestLegalPaperworkAudit:
         report = engine.diagnose(detail)
         assert any("書類" in f or "DOC" in f or "paper" in f.lower() for f in report.warning_flags)
 
+    def test_dealer_sales_certificate_paperwork_passes(self, engine: Any) -> None:
+        """Verify presence of 販売証明書 or バイク登録書類 passes paperwork audit."""
+        detail = ListingDetail(
+            id="article-dealer-cert",
+            title="ヤマハ ジョグ 50cc",
+            url="https://jmty.jp/articles/jog-cert",
+            price=45000,
+            price_text="45,000円",
+            description="バイク登録書類(販売証明書)あり。カギ純正2本。セル・キック始動、走行できます。",
+            seller=SellerProfile(name="バイク販売店", identified=True, good_ratings=20),
+        )
+        report = engine.diagnose(detail)
+        doc_rules = [r for r in report.rules_evaluated if "DOC-003" in r.rule_id]
+        assert len(doc_rules) == 1
+        assert doc_rules[0].passed is True
+        assert any("販売証明書" in r.reasoning for r in doc_rules)
+
 
 # ===========================================================================
 # Tier 1 & 2: Mechanical Condition Triage Tests
@@ -195,6 +212,23 @@ class TestMechanicalTriage:
         report = engine.diagnose(detail)
         assert report.verdict != "FATAL_REJECT"
         assert any("バッテリー" in f or "BATTERY" in f for f in report.warning_flags + report.info_flags)
+
+    def test_drivable_and_kick_start_passes(self, engine: Any) -> None:
+        """Verify phrases like '走行できます' and 'セル・キック始動' pass mechanical check."""
+        detail = ListingDetail(
+            id="article-drivable",
+            title="ホンダ Today 50cc",
+            url="https://jmty.jp/articles/today-drive",
+            price=40000,
+            price_text="40,000円",
+            description="セル・キック始動、走行できます。最高速度53キロ確認。登録書類あり。",
+            seller=SellerProfile(name="出品者", identified=True, good_ratings=5),
+        )
+        report = engine.diagnose(detail)
+        mech_rules = [r for r in report.rules_evaluated if "MECH-003" in r.rule_id]
+        assert len(mech_rules) == 1
+        assert mech_rules[0].passed is True
+
 
 
 # ===========================================================================

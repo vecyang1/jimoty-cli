@@ -32,13 +32,16 @@ class SellerProfile:
     url: Optional[str] = None
     avatar_url: Optional[str] = None
     identified: bool = False  # 本人確認済 badge
+    sms_authenticated: bool = False  # SMS認証済 badge
     good_ratings: int = 0     # 良い
     normal_ratings: int = 0   # 普通
     bad_ratings: int = 0      # 悪い
     total_ratings: int = 0
     articles_count: int = 0   # 投稿数 / 出品数
     is_antique_dealer: bool = False  # 古物商許可・法人・業者
+    profile_text: Optional[str] = None  # 出品者の自己紹介文・取引方針
     badge_names: List[str] = field(default_factory=list)
+    evaluations: List[Dict[str, Any]] = field(default_factory=list)  # 直近の取引評価コメント
     raw_profile: Optional[Dict[str, Any]] = None
 
     def __post_init__(self) -> None:
@@ -79,7 +82,7 @@ class ListingSummary:
 
     @property
     def image_url(self) -> Optional[str]:
-        """Convenience alias for thumbnail_url."""
+        """Convenience property returning thumbnail URL."""
         return self.thumbnail_url
 
     def to_dict(self) -> Dict[str, Any]:
@@ -111,6 +114,12 @@ class ListingDetail:
     category_path: List[str] = field(default_factory=list)
     status: str = "open"
     is_free: bool = False
+    favorites_count: int = 0
+    inquiry_rush: bool = False
+    delivery_available: bool = False
+    delivery_notes: Optional[str] = None
+    video_urls: List[str] = field(default_factory=list)
+    drive_urls: List[str] = field(default_factory=list)
     attributes: Dict[str, Any] = field(default_factory=dict)
     raw_data: Optional[Dict[str, Any]] = None
 

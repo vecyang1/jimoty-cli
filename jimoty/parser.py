@@ -193,6 +193,10 @@ def _parse_search_item(item: Tag, base_url: str) -> Optional[ListingSummary]:
         return None
 
     href = link_el["href"]
+    # 0. Filter out non-listing alliance/recruitment ads injected into search results
+    if item.select_one(".p-item-alliance-tag") or "/rec-" in href or "/rec_" in href or "alliance-" in href:
+        return None
+
     full_url = urljoin(base_url, href)
 
     title = ""
@@ -432,7 +436,15 @@ def _parse_detail_from_next_data(
             if isinstance(img, str) and img.strip():
                 image_urls.append(urljoin(base_url, img.strip()))
             elif isinstance(img, dict):
-                src = img.get("url") or img.get("original") or img.get("large") or img.get("src")
+                src = (
+                    img.get("large_url")
+                    or img.get("large")
+                    or img.get("original")
+                    or img.get("url")
+                    or img.get("medium_url")
+                    or img.get("small_url")
+                    or img.get("src")
+                )
                 if src and isinstance(src, str):
                     image_urls.append(urljoin(base_url, src.strip()))
 
@@ -527,6 +539,50 @@ def _parse_detail_from_next_data(
 
     status = str(article.get("status") or article.get("state") or "open")
 
+    # 9. Favorites & Popularity
+    fav_count = int(
+        article.get("favorite_user_count")
+        or article.get("favorites_count")
+        or article.get("favorite_count")
+        or 0
+    )
+    inquiry_rush = bool(article.get("inquiry_rush"))
+
+    # 10. External media links in description (YouTube, Google Drive)
+    video_urls: List[str] = []
+    drive_urls: List[str] = []
+    if description:
+        yt_matches = re.findall(
+            r"https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[a-zA-Z0-9_-]+",
+            description,
+        )
+        for ym in yt_matches:
+            if ym not in video_urls:
+                video_urls.append(ym)
+
+        drive_matches = re.findall(
+            r"https?://drive\.google\.com/[^\s\)\"\'<>]+",
+            description,
+        )
+        for dm in drive_matches:
+            if dm not in drive_urls:
+                drive_urls.append(dm)
+
+    # 11. Delivery Notes & Availability
+    delivery_available = False
+    delivery_notes = None
+    if description and any(k in description for k in ["配送", "お届け", "配達", "軽トラ"]):
+        delivery_available = True
+        notes_parts = []
+        for line in description.splitlines():
+            line_str = line.strip()
+            if any(k in line_str for k in ["配送", "配達", "お届け", "軽トラ", "引取", "引き取り"]):
+                notes_parts.append(line_str)
+                if len(notes_parts) >= 3:
+                    break
+        if notes_parts:
+            delivery_notes = " | ".join(notes_parts)
+
     return ListingDetail(
         id=item_id,
         title=title,
@@ -544,6 +600,12 @@ def _parse_detail_from_next_data(
         category_path=cat_path,
         status=status,
         is_free=is_free,
+        favorites_count=fav_count,
+        inquiry_rush=inquiry_rush,
+        delivery_available=delivery_available,
+        delivery_notes=delivery_notes,
+        video_urls=video_urls,
+        drive_urls=drive_urls,
         attributes=article.get("attributes", {}),
         raw_data=article,
     )
@@ -648,12 +710,9 @@ def _parse_seller_profile(
         or eval_count.get("bad_evaluation_count")
         or 0
     )
-    total_ratings = int(
-        user_dict.get("total_evaluations_count")
-        or user_dict.get("total_ratings")
-        or eval_dict.get("evaluation_score") if isinstance(eval_dict, dict) and eval_dict.get("evaluation_score") else 0
-        or (good_ratings + normal_ratings + bad_ratings)
-    )
+    calc_total = good_ratings + normal_ratings + bad_ratings
+    raw_total = int(user_dict.get("total_evaluations_count") or user_dict.get("total_ratings") or 0)
+    total_ratings = raw_total if raw_total > 0 else calc_total
 
     articles_count = int(
         user_dict.get("articles_count")
@@ -662,6 +721,23 @@ def _parse_seller_profile(
         or user_dict.get("active_articles_count")
         or 0
     )
+
+    sms_authenticated = (
+        bool(cert_status.get("sms_authenticated")) if isinstance(cert_status, dict) else False
+    ) or any("SMS" in b for b in badge_names)
+
+    profile_text = clean_text(user_dict.get("profile_text") or "") if user_dict.get("profile_text") else None
+
+    evaluations_list: List[Dict[str, Any]] = []
+    if isinstance(eval_dict, dict) and isinstance(eval_dict.get("evaluations"), list):
+        for ev in eval_dict["evaluations"]:
+            if isinstance(ev, dict):
+                evaluations_list.append({
+                    "id": str(ev.get("id") or ""),
+                    "type": str(ev.get("type") or "good"),
+                    "user_name": str(ev.get("user", {}).get("name") if isinstance(ev.get("user"), dict) else ""),
+                    "comment": clean_text(ev.get("comment") or ""),
+                })
 
     # HTML verification fallback if fields were missing from JSON
     if not name:
@@ -706,13 +782,16 @@ def _parse_seller_profile(
         url=profile_url,
         avatar_url=avatar_url,
         identified=identified,
+        sms_authenticated=sms_authenticated,
         good_ratings=good_ratings,
         normal_ratings=normal_ratings,
         bad_ratings=bad_ratings,
         total_ratings=total_ratings,
         articles_count=articles_count,
         is_antique_dealer=is_antique_dealer,
+        profile_text=profile_text,
         badge_names=badge_names,
+        evaluations=evaluations_list,
         raw_profile=user_dict,
     )
 
