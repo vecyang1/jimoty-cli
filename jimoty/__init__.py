@@ -54,6 +54,7 @@ from jimoty.parser import (
 )
 from jimoty.templates import (
     generate_inquiry_template,
+    get_contact_timing_advisory,
     list_template_types,
 )
 
@@ -102,6 +103,7 @@ __all__ = [
     "RuleCategory",
     # Cultural Templates
     "generate_inquiry_template",
+    "get_contact_timing_advisory",
     "list_template_types",
     # Pickup Safety Checklist
     "get_pickup_checklist",

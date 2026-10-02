@@ -22,6 +22,67 @@ def list_template_types() -> List[str]:
     return list(TEMPLATE_TYPES)
 
 
+def get_contact_timing_advisory(now_dt: Optional[datetime] = None) -> Dict[str, Any]:
+    """Analyze current Japan Standard Time (JST) and return contact feasibility advisory.
+
+    Informs the buyer/agent whether current hours are appropriate for messaging sellers
+    and whether replies are likely to be delayed due to sleep or working hours.
+    """
+    jst = timezone(timedelta(hours=9))
+    if now_dt is None:
+        now_jst = datetime.now(jst)
+    else:
+        if now_dt.tzinfo is None:
+            now_jst = now_dt.replace(tzinfo=jst)
+        else:
+            now_jst = now_dt.astimezone(jst)
+
+    hour = now_jst.hour
+    time_str = now_jst.strftime("%H:%M JST")
+
+    if hour >= 22 or hour < 6:
+        status = "LATE_NIGHT"
+        is_favorable = False
+        label = "深夜帯 (返信遅延見込み・就寝中可能性大)"
+        advice = (
+            f"現在日本時間 {time_str}（深夜帯）。出品者が就寝中または即答困難な可能性が高いため、"
+            "返信は翌朝以降になる見込みです。連絡時は夜間配慮の文面（「夜分遅くに恐れ入ります」等）が自動適用されます。"
+        )
+    elif 6 <= hour < 9:
+        status = "EARLY_MORNING"
+        is_favorable = False
+        label = "早朝帯 (通勤・準備時間)"
+        advice = (
+            f"現在日本時間 {time_str}（早朝）。通勤・朝の準備時間帯のため、"
+            "返信は昼または夕方以降になる場合があります。"
+        )
+    elif 9 <= hour < 18:
+        status = "DAYTIME"
+        is_favorable = True
+        label = "日中帯 (通常連絡可能)"
+        advice = (
+            f"現在日本時間 {time_str}（日中）。通常の活動時間帯です。"
+            "個人出品者の場合、勤務時間中のため昼休憩または18時以降の返信になることがあります。"
+        )
+    else:
+        status = "EVENING"
+        is_favorable = True
+        label = "夜間帯 (ゴールデンタイム・即答期待)"
+        advice = (
+            f"現在日本時間 {time_str}（夕方〜夜間）。在宅・プライベート時間帯のため、"
+            "最も迅速な返信・やり取りが期待できます。"
+        )
+
+    return {
+        "status": status,
+        "is_favorable": is_favorable,
+        "current_jst": time_str,
+        "hour": hour,
+        "label": label,
+        "advice": advice,
+    }
+
+
 def _get_seller_salutation(detail: ListingDetail) -> str:
     """Return polite salutation for the seller, falling back gracefully if missing."""
     if detail.seller and detail.seller.name and detail.seller.name.strip():

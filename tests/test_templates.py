@@ -9,11 +9,13 @@ Verifies culturally idiomatic, polite marketplace inquiry templates (敬語):
 
 from __future__ import annotations
 
+from datetime import datetime, timezone, timedelta
+
 import pytest
 from jimoty.models import ListingDetail, Location, SellerProfile
 
 try:
-    from jimoty.templates import generate_inquiry_template
+    from jimoty.templates import generate_inquiry_template, get_contact_timing_advisory
     HAS_TEMPLATES = True
 except ImportError:
     HAS_TEMPLATES = False
@@ -98,3 +100,44 @@ class TestInquiryTemplates:
         msg = generate_inquiry_template(anon_detail, template_type="initial")
         assert "出品者様" in msg
         assert len(msg) > 50
+
+
+class TestContactTimingAdvisory:
+    """Test Japan Standard Time contact feasibility analysis."""
+
+    def test_late_night_advisory(self) -> None:
+        """23:00 JST is late night, unfavorable, warning about sleep."""
+        jst = timezone(timedelta(hours=9))
+        dt = datetime(2026, 10, 2, 23, 30, tzinfo=jst)
+        adv = get_contact_timing_advisory(dt)
+        assert adv["status"] == "LATE_NIGHT"
+        assert adv["is_favorable"] is False
+        assert "深夜帯" in adv["label"]
+        assert "翌朝以降" in adv["advice"]
+
+    def test_early_morning_advisory(self) -> None:
+        """07:00 JST is early morning commuting time."""
+        jst = timezone(timedelta(hours=9))
+        dt = datetime(2026, 10, 2, 7, 15, tzinfo=jst)
+        adv = get_contact_timing_advisory(dt)
+        assert adv["status"] == "EARLY_MORNING"
+        assert adv["is_favorable"] is False
+        assert "早朝" in adv["label"]
+
+    def test_daytime_advisory(self) -> None:
+        """14:00 JST is normal daytime business hours."""
+        jst = timezone(timedelta(hours=9))
+        dt = datetime(2026, 10, 2, 14, 0, tzinfo=jst)
+        adv = get_contact_timing_advisory(dt)
+        assert adv["status"] == "DAYTIME"
+        assert adv["is_favorable"] is True
+        assert "日中" in adv["label"]
+
+    def test_evening_prime_time(self) -> None:
+        """20:00 JST is evening golden time with high responsiveness."""
+        jst = timezone(timedelta(hours=9))
+        dt = datetime(2026, 10, 2, 20, 30, tzinfo=jst)
+        adv = get_contact_timing_advisory(dt)
+        assert adv["status"] == "EVENING"
+        assert adv["is_favorable"] is True
+        assert "ゴールデンタイム" in adv["label"]

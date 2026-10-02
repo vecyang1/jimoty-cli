@@ -36,7 +36,7 @@ from jimoty.config import (
 from jimoty.diagnostics import DiagnosticEngine, Verdict
 from jimoty.models import ListingDetail, SearchQuery
 from jimoty.parser import ParserError, parse_detail_page, parse_search_page
-from jimoty.templates import generate_inquiry_template, list_template_types
+from jimoty.templates import generate_inquiry_template, get_contact_timing_advisory, list_template_types
 
 
 def _load_detail(url_or_id_or_file: str, proxy: Optional[str] = None) -> ListingDetail:
@@ -111,7 +111,9 @@ def _handle_get(args: argparse.Namespace) -> int:
     detail = _load_detail(args.url_or_id, proxy=args.proxy)
 
     if args.json:
-        print(json.dumps(detail.to_dict(), ensure_ascii=False, indent=2))
+        data = detail.to_dict()
+        data["contact_timing_advisory"] = get_contact_timing_advisory()
+        print(json.dumps(data, ensure_ascii=False, indent=2))
     else:
         price_disp = "無料 (0円)" if detail.is_free else detail.price_text
         seller_name = detail.seller.name if detail.seller else "N/A"
@@ -130,6 +132,8 @@ def _handle_get(args: argparse.Namespace) -> int:
             else "評価なし"
         )
 
+        timing = get_contact_timing_advisory()
+
         print("=" * 78)
         print(f"  JIMOTY LISTING DETAIL: [{detail.id}]")
         print("=" * 78)
@@ -140,6 +144,9 @@ def _handle_get(args: argparse.Namespace) -> int:
             post_str = detail.created_at.strftime("%Y-%m-%d %H:%M")
             up_str = detail.updated_at.strftime("%Y-%m-%d %H:%M") if detail.updated_at else "なし"
             print(f"  Timeline:    投稿: {post_str} | 最終更新: {up_str}")
+        print(f"  Contact:     {timing['current_jst']} ({timing['label']})")
+        if not timing['is_favorable']:
+            print(f"  Timing Note: {timing['advice']}")
         print(f"  Seller:      {seller_name} ({seller_ident}, {ratings_disp})")
         if detail.favorites_count or detail.inquiry_rush:
             rush_str = " (問い合わせ殺到中!)" if detail.inquiry_rush else ""
@@ -230,7 +237,9 @@ def _handle_seller(args: argparse.Namespace) -> int:
         return 1
 
     if args.json:
-        print(json.dumps(seller.to_dict(), ensure_ascii=False, indent=2))
+        data = seller.to_dict()
+        data["contact_timing_advisory"] = get_contact_timing_advisory()
+        print(json.dumps(data, ensure_ascii=False, indent=2))
         return 0
 
     print("=" * 78)
@@ -256,6 +265,11 @@ def _handle_seller(args: argparse.Namespace) -> int:
     print(f"  Rating Breakdown: 良い: {seller.good_ratings} | 普通: {seller.normal_ratings} | 悪い: {seller.bad_ratings}")
     print(f"  Good Rating Rate: {ratio_str} (Total: {seller.total_ratings} 件)")
     print(f"  Active Listings:  {seller.articles_count} 件出品中")
+
+    timing = get_contact_timing_advisory()
+    print(f"  Contact Timing:   {timing['current_jst']} ({timing['label']})")
+    if not timing['is_favorable']:
+        print(f"  Timing Advisory:  {timing['advice']}")
 
     if seller.profile_text:
         print("-" * 78)
@@ -395,9 +409,16 @@ def _handle_template(args: argparse.Namespace) -> int:
             "title": detail.title,
             "seller_name": detail.seller.name if detail.seller else "",
             "template": text,
+            "contact_timing_advisory": get_contact_timing_advisory(),
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
+        timing = get_contact_timing_advisory()
+        print("=" * 78)
+        print(f"  JAPAN CONTACT TIMING: {timing['current_jst']} ({timing['label']})")
+        if not timing['is_favorable']:
+            print(f"  ADVISORY: {timing['advice']}")
+        print("=" * 78)
         print(text)
 
     return 0
