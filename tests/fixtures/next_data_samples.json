@@ -1,0 +1,159 @@
+{
+  "free_zero_yen": {
+    "article": {
+      "id": "article-00free",
+      "title": "無料 ヤマハ ビーノ 不動 引き取り限定",
+      "price": 0,
+      "price_formatted": "0円",
+      "is_free": true,
+      "description": "ヤマハ ビーノ 5AU 2ストです。\n不動車のため部品取りや修理ベースとしてお譲りします。\n引き取りに来ていただける方限定、0円でお譲りします。\n廃車証明書あります。",
+      "category": {
+        "id": 105,
+        "name": "バイク",
+        "slug": "sale-bik"
+      },
+      "location": {
+        "prefecture": "神奈川県",
+        "city": "茅ヶ崎市"
+      },
+      "images": [],
+      "post_user": {
+        "id": "u555",
+        "nickname": "断捨離マン",
+        "identified": true,
+        "good_evaluations_count": 8,
+        "normal_evaluations_count": 0,
+        "bad_evaluations_count": 0
+      }
+    }
+  },
+  "missing_fields": {
+    "article": {
+      "id": "article-min",
+      "title": "バイク 部品",
+      "price": 3000,
+      "price_formatted": "3,000円",
+      "description": "",
+      "category": null,
+      "location": null,
+      "images": null,
+      "post_user": null
+    }
+  },
+  "extreme_ratings_high": {
+    "article": {
+      "id": "article-pro",
+      "title": "ホンダ リード125 実動 整備済み",
+      "price": 120000,
+      "price_formatted": "120,000円",
+      "description": "バイクショップ整備車両です。整備点検済み、登録書類一式完備。\nセル一発始動、保証付きです。",
+      "category": {
+        "id": 105,
+        "name": "バイク",
+        "slug": "sale-bik"
+      },
+      "location": {
+        "prefecture": "神奈川県",
+        "city": "藤沢市"
+      },
+      "images": [
+        {"url": "https://img.jmty.jp/photos/lead.jpg"}
+      ],
+      "post_user": {
+        "id": "u_dealer_99",
+        "nickname": "湘南モータース",
+        "identified": true,
+        "is_antique_dealer": true,
+        "good_evaluations_count": 2540,
+        "normal_evaluations_count": 5,
+        "bad_evaluations_count": 1,
+        "articles_count": 350
+      }
+    }
+  },
+  "extreme_ratings_low": {
+    "article": {
+      "id": "article-bad-seller",
+      "title": "スズキ アドレス 不明",
+      "price": 5000,
+      "price_formatted": "5,000円",
+      "description": "動くかわかりません。書類ありません。鍵もありません。",
+      "category": {
+        "id": 105,
+        "name": "バイク",
+        "slug": "sale-bik"
+      },
+      "location": {
+        "prefecture": "神奈川県",
+        "city": "横浜市"
+      },
+      "images": [],
+      "post_user": {
+        "id": "u_trouble_01",
+        "nickname": "トラブル出品者",
+        "identified": false,
+        "good_evaluations_count": 0,
+        "normal_evaluations_count": 2,
+        "bad_evaluations_count": 18,
+        "articles_count": 3
+      }
+    }
+  },
+  "unicode_and_special_chars": {
+    "article": {
+      "id": "article-unicode",
+      "title": "✨【美車】５０ｃｃ 原付スクーター ４スト ＦＩ 絶好調！💨",
+      "price": 45000,
+      "price_formatted": "45,000円",
+      "description": "★超お得！美車です★\n　　全角スペースや絵文字テスト：🛵💨\n・排気量：５０ｃｃ（原付一種）\n・エンジン：４サイクル　ＦＩ車\n・走行距離：約１２，０００ｋｍ\n・登録用書類：廃車申告受付書＆譲渡証明書あり\n\nお気軽にご連絡くださいませ（＾_＾）",
+      "category": {
+        "id": 105,
+        "name": "バイク",
+        "slug": "sale-bik"
+      },
+      "location": {
+        "prefecture": "神奈川県",
+        "city": "茅ヶ崎市",
+        "station": "茅ヶ崎駅"
+      },
+      "images": [
+        {"url": "https://img.jmty.jp/photos/emoji_bike.jpg"}
+      ],
+      "post_user": {
+        "id": "u777",
+        "nickname": "テストユーザー＠湘南",
+        "identified": true,
+        "good_evaluations_count": 42,
+        "normal_evaluations_count": 1,
+        "bad_evaluations_count": 0
+      }
+    }
+  },
+  "stolen_indicators": {
+    "article": {
+      "id": "article-stolen-risk",
+      "title": "原付バイク 鍵なし 書類なし 部品取り 直結仕様",
+      "price": 2000,
+      "price_formatted": "2,000円",
+      "description": "鍵を紛失して配線を直結してあります。登録用書類は一切ありません。\nフレーム番号は削れて見えません。現状渡しノークレームで。",
+      "category": {
+        "id": 105,
+        "name": "バイク",
+        "slug": "sale-bik"
+      },
+      "location": {
+        "prefecture": "神奈川県",
+        "city": "川崎市"
+      },
+      "images": [],
+      "post_user": {
+        "id": "u999",
+        "nickname": "名無し",
+        "identified": false,
+        "good_evaluations_count": 1,
+        "normal_evaluations_count": 0,
+        "bad_evaluations_count": 5
+      }
+    }
+  }
+}
