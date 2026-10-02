@@ -33,6 +33,7 @@ class RuleCategory(str, Enum):
     MECHANICAL = "MECHANICAL"
     POWERTRAIN = "POWERTRAIN"
     SELLER = "SELLER"
+    ACTIVITY = "ACTIVITY"
 
     def __str__(self) -> str:
         return self.value
@@ -97,6 +98,8 @@ class DiagnosticReport:
     warning_flags: List[str] = field(default_factory=list)
     info_flags: List[str] = field(default_factory=list)
     summary: str = ""
+    posted_at: Optional[str] = None
+    updated_at: Optional[str] = None
     created_at: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -109,6 +112,8 @@ class DiagnosticReport:
             "verdict": str(self.verdict),
             "score": self.score,
             "summary": self.summary,
+            "posted_at": self.posted_at,
+            "updated_at": self.updated_at,
             "fatal_flags": list(self.fatal_flags),
             "warning_flags": list(self.warning_flags),
             "info_flags": list(self.info_flags),
@@ -139,6 +144,10 @@ class DiagnosticReport:
             f"  Title:     {self.title}",
             f"  Price:     {price_str}",
         ]
+        if self.posted_at or self.updated_at:
+            post_str = self.posted_at[:16].replace("T", " ") if self.posted_at else "不明"
+            up_str = self.updated_at[:16].replace("T", " ") if self.updated_at else "なし"
+            lines.append(f"  Timeline:  投稿: {post_str} | 最終更新: {up_str}")
         if self.url:
             lines.append(f"  URL:       {self.url}")
 

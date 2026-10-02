@@ -10,6 +10,7 @@ Complies with Jimoty etiquette, handling free (0円) items, anonymous sellers, a
 
 from __future__ import annotations
 
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from jimoty.models import ListingDetail
 
@@ -66,17 +67,41 @@ def _render_initial_template(detail: ListingDetail, **kwargs: Any) -> str:
         intent_line = f"ご出品されている「{title}」{price_display}を拝見し、購入を希望しております。"
         purpose_line = f"当方、{loc_mention}伺い【{pickup_method}】にて迅速にお引き取りすることが可能です。"
 
+    # Check time-of-day greeting (Japan Standard Time)
+    jst = timezone(timedelta(hours=9))
+    now_jst = datetime.now(jst)
+    greeting = "はじめまして。コメント失礼いたします。"
+    if now_jst.hour >= 22 or now_jst.hour < 5:
+        greeting = "はじめまして。夜分遅くにコメント失礼いたします。"
+    elif 5 <= now_jst.hour < 8:
+        greeting = "はじめまして。早朝にコメント失礼いたします。"
+
+    # Check listing recency: if > 30 days old, add gentle availability check
+    availability_line = ""
+    last_dt = detail.updated_at or detail.created_at
+    if last_dt:
+        now_utc = datetime.now(timezone.utc)
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=jst)
+        diff_days = (now_utc - last_dt).total_seconds() / 86400.0
+        if diff_days >= 30:
+            availability_line = "掲載から少々お時間が経過しておりますが、現在もお手元にありお取引可能でしょうか？"
+
     lines = [
         f"{salutation}",
         "",
-        "はじめまして。コメント失礼いたします。",
+        greeting,
         intent_line,
+    ]
+    if availability_line:
+        lines.append(availability_line)
+    lines.extend([
         purpose_line,
         "日時候補や受け渡し場所など、出品者様のご都合に合わせて柔軟に対応させていただきます。",
         "",
         "もしお取引が可能でしたら、ご都合の良い日程や引き渡し方法についてご教示いただけますと幸いです。",
         "スムーズで安心できるお取引を心がけますので、何卒よろしくお願いいたします。" + closing_name,
-    ]
+    ])
     return "\n".join(lines)
 
 

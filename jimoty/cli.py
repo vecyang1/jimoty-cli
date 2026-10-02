@@ -93,9 +93,12 @@ def _handle_search(args: argparse.Namespace) -> int:
         for item in items:
             price_disp = "無料 (0円)" if item.is_free else item.price_text
             loc_disp = item.location_text or "N/A"
+            date_disp = item.created_at_text or (item.created_at.strftime("%Y-%m-%d") if item.created_at else None)
             print(f"[{item.id}] {item.title}")
             print(f"  Price:    {price_disp}")
             print(f"  Location: {loc_disp}")
+            if date_disp:
+                print(f"  Timeline: {date_disp}")
             print(f"  URL:      {item.url}")
             print("-" * 78)
 
@@ -128,6 +131,10 @@ def _handle_get(args: argparse.Namespace) -> int:
         print(f"  Title:       {detail.title}")
         print(f"  Price:       {price_disp}")
         print(f"  Location:    {detail.location_text or 'N/A'}")
+        if detail.created_at:
+            post_str = detail.created_at.strftime("%Y-%m-%d %H:%M")
+            up_str = detail.updated_at.strftime("%Y-%m-%d %H:%M") if detail.updated_at else "なし"
+            print(f"  Timeline:    投稿: {post_str} | 最終更新: {up_str}")
         print(f"  Seller:      {seller_name} ({seller_ident}, {ratings_disp})")
         print(f"  URL:         {detail.url}")
         print("-" * 78)

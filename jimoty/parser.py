@@ -215,7 +215,7 @@ def _parse_search_item(item: Tag, base_url: str) -> Optional[ListingSummary]:
             item_id = href.rstrip("/").split("/")[-1]
 
     # 3. Price
-    price_el = item.select_one(".p-articles-list-item__price, [class*='price']")
+    price_el = item.select_one(".p-item-most-important, .p-articles-list-item__price, [class*='price']")
     raw_price_str = clean_text(price_el.get_text()) if price_el else ""
     price_val, price_text, is_free = extract_price(raw_price_str)
 
@@ -233,13 +233,13 @@ def _parse_search_item(item: Tag, base_url: str) -> Optional[ListingSummary]:
             thumbnail_url = urljoin(base_url, src)
 
     # 5. Location
-    loc_el = item.select_one(".p-articles-list-item__location, [class*='location'], [class*='place']")
-    loc_text = clean_text(loc_el.get_text()) if loc_el else None
+    loc_el = item.select_one(".p-item-supplementary-info, .p-articles-list-item__location, [class*='location'], [class*='place']")
+    loc_text = clean_text(" ".join(loc_el.get_text().split())) if loc_el else None
     location = parse_location_hierarchy(loc_text) if loc_text else None
 
     # 6. Date / Timestamp
-    date_el = item.select_one(".p-articles-list-item__date, time, [class*='date'], [class*='time']")
-    date_text = clean_text(date_el.get_text()) if date_el else None
+    date_el = item.select_one(".p-item-history, .p-item-additional-info, .p-articles-list-item__date, time, [class*='date'], [class*='time']")
+    date_text = clean_text(" ".join(date_el.get_text().split())) if date_el else None
     created_at = None
     if date_el and date_el.get("datetime"):
         created_at = parse_datetime(date_el["datetime"])
@@ -383,9 +383,14 @@ def _parse_detail_from_next_data(
             full_url = urljoin(base_url, f"/articles/{item_id}")
 
     # 3. Price
-    raw_price = article.get("price")
+    par_cat = article.get("par_category_items") or {}
+    raw_price = par_cat.get("price") if isinstance(par_cat, dict) else None
+    if raw_price is None:
+        raw_price = article.get("price")
+
     raw_price_str = (
-        article.get("price_formatted")
+        article.get("important_field")
+        or article.get("price_formatted")
         or article.get("price_str")
         or article.get("price_text")
     )
@@ -394,13 +399,23 @@ def _parse_detail_from_next_data(
     elif raw_price is not None:
         price_val, price_text, is_free = extract_price(raw_price)
     else:
-        price_val, price_text, is_free = 0, "0円", True
+        price_el = soup.select_one(".p-item-most-important, [class*='price'], [itemprop='price']")
+        if price_el:
+            price_val, price_text, is_free = extract_price(price_el.get_text())
+        else:
+            price_val, price_text, is_free = 0, "0円", True
 
     if article.get("is_free") is True or price_val == 0:
         is_free = True
 
     # 4. Description
-    description = article.get("description") or article.get("body") or ""
+    description = (
+        article.get("description")
+        or article.get("body")
+        or article.get("text")
+        or article.get("content")
+        or ""
+    )
     description = clean_text(description)
     if not description:
         desc_el = soup.select_one(
@@ -428,8 +443,25 @@ def _parse_detail_from_next_data(
                 image_urls.append(urljoin(base_url, src))
 
     # 6. Location
+    raw_locations = article.get("locations")
     loc_data = article.get("location")
-    if isinstance(loc_data, dict):
+    if isinstance(raw_locations, list) and len(raw_locations) > 0 and isinstance(raw_locations[0], dict):
+        loc0 = raw_locations[0]
+        pref_dict = loc0.get("prefecture") or {}
+        city_dict = loc0.get("city") or {}
+        town_dict = loc0.get("town") or {}
+        pref = (pref_dict.get("name_with_suffix") or pref_dict.get("name")) if isinstance(pref_dict, dict) else str(pref_dict)
+        city = (city_dict.get("name_with_suffix") or city_dict.get("name")) if isinstance(city_dict, dict) else str(city_dict)
+        town = (town_dict.get("name_with_suffix") or town_dict.get("name")) if isinstance(town_dict, dict) else str(town_dict)
+        st_obj = loc0.get("station") or {}
+        station = st_obj.get("name") if isinstance(st_obj, dict) else str(st_obj)
+        m = loc0.get("map") or {}
+        coord = (m.get("coordinate") or {}) if isinstance(m, dict) else {}
+        lat = float(coord["latitude"]) if isinstance(coord, dict) and "latitude" in coord and coord["latitude"] is not None else None
+        lng = float(coord["longitude"]) if isinstance(coord, dict) and "longitude" in coord and coord["longitude"] is not None else None
+        area_name = m.get("area_name") if isinstance(m, dict) else None
+        raw_loc = clean_text(area_name or loc0.get("area_name") or " - ".join(filter(None, [pref, city, town, station])))
+    elif isinstance(loc_data, dict):
         pref = loc_data.get("prefecture") or loc_data.get("prefecture_name")
         city = loc_data.get("city") or loc_data.get("city_name")
         town = loc_data.get("town") or loc_data.get("town_name")
@@ -470,6 +502,10 @@ def _parse_detail_from_next_data(
     # 7. Dates
     created_at = parse_datetime(article.get("created_at") or article.get("published_at"))
     updated_at = parse_datetime(article.get("updated_at") or article.get("modified_at"))
+    if not created_at:
+        date_el = soup.select_one("time, .p-article-date, [class*='date']")
+        if date_el:
+            created_at = parse_datetime(date_el.get("datetime") or date_el.get_text())
 
     # 8. Seller Profile
     seller = _parse_seller_profile(post_user, soup, base_url)
@@ -554,10 +590,22 @@ def _parse_seller_profile(
                 if badge_name:
                     badge_names.append(clean_text(badge_name))
 
+    cert_status = user_dict.get("certification_status")
+    if isinstance(cert_status, dict):
+        if cert_status.get("sms_authenticated") and "SMS認証済" not in badge_names:
+            badge_names.append("SMS認証済")
+        if (cert_status.get("identified") or cert_status.get("multi_identified")) and "本人確認済" not in badge_names:
+            badge_names.append("本人確認済")
+        if cert_status.get("antique_dealer_identified") and "古物商" not in badge_names:
+            badge_names.append("古物商")
+        if cert_status.get("business") and "法人" not in badge_names:
+            badge_names.append("法人")
+
     # Identified badge check (本人確認済)
     identified = (
         bool(user_dict.get("identified"))
         or bool(user_dict.get("is_identified"))
+        or (isinstance(cert_status, dict) and (bool(cert_status.get("identified")) or bool(cert_status.get("multi_identified"))))
         or user_dict.get("identification_state") == 2
         or user_dict.get("identification_status") in ("verified", "identified", 2)
         or any("本人確認" in b for b in badge_names)
@@ -568,8 +616,12 @@ def _parse_seller_profile(
         bool(user_dict.get("is_antique_dealer"))
         or bool(user_dict.get("is_dealer"))
         or bool(user_dict.get("antique_dealer"))
+        or (isinstance(cert_status, dict) and (bool(cert_status.get("antique_dealer_identified")) or bool(cert_status.get("business"))))
         or any("古物商" in b or "法人" in b for b in badge_names)
     )
+
+    eval_dict = user_dict.get("evaluation")
+    eval_count = eval_dict.get("count", {}) if isinstance(eval_dict, dict) and isinstance(eval_dict.get("count"), dict) else {}
 
     # Ratings extraction
     good_ratings = int(
@@ -577,6 +629,7 @@ def _parse_seller_profile(
         or user_dict.get("good_ratings")
         or user_dict.get("good_count")
         or user_dict.get("good")
+        or eval_count.get("good_evaluation_count")
         or 0
     )
     normal_ratings = int(
@@ -584,6 +637,7 @@ def _parse_seller_profile(
         or user_dict.get("normal_ratings")
         or user_dict.get("normal_count")
         or user_dict.get("normal")
+        or eval_count.get("normal_evaluation_count")
         or 0
     )
     bad_ratings = int(
@@ -591,11 +645,13 @@ def _parse_seller_profile(
         or user_dict.get("bad_ratings")
         or user_dict.get("bad_count")
         or user_dict.get("bad")
+        or eval_count.get("bad_evaluation_count")
         or 0
     )
     total_ratings = int(
         user_dict.get("total_evaluations_count")
         or user_dict.get("total_ratings")
+        or eval_dict.get("evaluation_score") if isinstance(eval_dict, dict) and eval_dict.get("evaluation_score") else 0
         or (good_ratings + normal_ratings + bad_ratings)
     )
 

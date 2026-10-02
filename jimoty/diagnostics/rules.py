@@ -21,6 +21,7 @@ Rule Catalog:
 
 from __future__ import annotations
 
+from datetime import datetime, timezone, timedelta
 import re
 import unicodedata
 from abc import ABC, abstractmethod
@@ -768,6 +769,152 @@ class SellerUnverifiedSuspiciousRule(BaseRule):
         )
 
 
+# ===========================================================================
+# Listing Recency & Activity Rules
+# ===========================================================================
+
+
+class StaleListingRule(BaseRule):
+    """ACTIVITY-001: Audit listing recency, updated timestamp, and seller contactability risk."""
+
+    def __init__(self, stale_days_threshold: int = 60, dead_days_threshold: int = 120) -> None:
+        super().__init__(
+            rule_id="ACTIVITY-001-STALE_LISTING",
+            name="投稿更新鮮度・放置リスク検査",
+            category=RuleCategory.ACTIVITY,
+            severity=RuleSeverity.WARNING,
+        )
+        self.stale_days_threshold = stale_days_threshold
+        self.dead_days_threshold = dead_days_threshold
+
+    def evaluate(self, detail: ListingDetail) -> RuleEvaluation:
+        last_dt = detail.updated_at or detail.created_at
+        if not last_dt:
+            return RuleEvaluation(
+                rule_id=self.rule_id,
+                name=self.name,
+                category=self.category,
+                severity=RuleSeverity.INFO,
+                passed=True,
+                reasoning="投稿日時の明示的記録が確認できませんでした。取引前の在庫・対応可否確認を推奨します。",
+                score_impact=0,
+            )
+
+        now = datetime.now(timezone.utc)
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=timezone(timedelta(hours=9)))
+
+        diff_days = max(0.0, (now - last_dt).total_seconds() / 86400.0)
+        date_str = last_dt.strftime("%Y-%m-%d")
+
+        if diff_days >= self.dead_days_threshold:
+            flag_msg = f"投稿放置リスク (ACTIVITY-001: 最終更新から約{int(diff_days)}日経過、出品者離脱・他所譲渡済みの可能性大)"
+            return RuleEvaluation(
+                rule_id=self.rule_id,
+                name=self.name,
+                category=self.category,
+                severity=RuleSeverity.WARNING,
+                passed=False,
+                reasoning=(
+                    f"最終更新から約{int(diff_days)}日（{date_str}）が経過しています。"
+                    "出品者がジモティーを放置しているか、他所で既に譲渡済みのまま投稿が残っている可能性が極めて高く、"
+                    "連絡がつかないリスクがあります。取引前に在庫確認が必須です。"
+                ),
+                score_impact=-20,
+                flags=[flag_msg],
+                metadata={"days_since_update": int(diff_days), "last_updated": date_str},
+            )
+        elif diff_days >= self.stale_days_threshold:
+            flag_msg = f"更新滞留 (ACTIVITY-001: 最終更新から約{int(diff_days)}日経過、応答遅延リスクあり)"
+            return RuleEvaluation(
+                rule_id=self.rule_id,
+                name=self.name,
+                category=self.category,
+                severity=RuleSeverity.WARNING,
+                passed=False,
+                reasoning=(
+                    f"最終更新から約{int(diff_days)}日（{date_str}）が経過しています。"
+                    "出品者の連絡応答率が低下している可能性があるため、購入決定前に取引可能か在庫確認を推奨します。"
+                ),
+                score_impact=-10,
+                flags=[flag_msg],
+                metadata={"days_since_update": int(diff_days), "last_updated": date_str},
+            )
+        elif diff_days <= 7:
+            flag_msg = f"新規・活発更新 (ACTIVITY-001: 最終更新から{int(diff_days)}日以内の新鮮な投稿)"
+            return RuleEvaluation(
+                rule_id=self.rule_id,
+                name=self.name,
+                category=self.category,
+                severity=RuleSeverity.INFO,
+                passed=True,
+                reasoning=(
+                    f"最終更新から{int(diff_days)}日以内（{date_str}）の非常に新鮮な投稿です。"
+                    "出品者のアクティブ度が高く、迅速な連絡・取引対応が期待できます。"
+                ),
+                score_impact=10,
+                flags=[flag_msg],
+                metadata={"days_since_update": int(diff_days), "last_updated": date_str},
+            )
+        else:
+            return RuleEvaluation(
+                rule_id=self.rule_id,
+                name=self.name,
+                category=self.category,
+                severity=RuleSeverity.INFO,
+                passed=True,
+                reasoning=f"最終更新から約{int(diff_days)}日（{date_str}）経過しています。通常のアクティブ範囲内です。",
+                score_impact=0,
+                metadata={"days_since_update": int(diff_days), "last_updated": date_str},
+            )
+
+
+class ContactTimingRule(BaseRule):
+    """ACTIVITY-002: Advisory check on seller contact time-of-day and etiquette."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            rule_id="ACTIVITY-002-TIME_COURTESY",
+            name="連絡時間帯・応答マナー配慮",
+            category=RuleCategory.ACTIVITY,
+            severity=RuleSeverity.INFO,
+        )
+
+    def evaluate(self, detail: ListingDetail) -> RuleEvaluation:
+        jst = timezone(timedelta(hours=9))
+        now_jst = datetime.now(jst)
+        hour = now_jst.hour
+        is_night = (hour >= 22 or hour < 7)
+
+        if is_night:
+            reasoning = (
+                f"現在日本時間 {now_jst.strftime('%H:%M')}（深夜早朝帯）です。"
+                "ジモティーでは夜間通知をオフにしている出品者が多く、早朝・深夜の連絡は通知迷惑・返信遅延の原因となります。"
+                "急ぎでない場合は日中（9:00〜21:00）の連絡、または『夜分遅くに失礼いたします』等の敬語配慮を推奨します。"
+            )
+            return RuleEvaluation(
+                rule_id=self.rule_id,
+                name=self.name,
+                category=self.category,
+                severity=RuleSeverity.INFO,
+                passed=True,
+                reasoning=reasoning,
+                score_impact=0,
+                metadata={"current_jst_hour": hour},
+            )
+        else:
+            return RuleEvaluation(
+                rule_id=self.rule_id,
+                name=self.name,
+                category=self.category,
+                severity=RuleSeverity.INFO,
+                passed=True,
+                reasoning=f"現在日本時間 {now_jst.strftime('%H:%M')}（日中・連絡推奨時間帯）です。出品者への連絡がスムーズに行える適切な時間帯です。",
+                score_impact=0,
+                metadata={"current_jst_hour": hour},
+            )
+
+
 def get_default_rules() -> List[BaseRule]:
     """Return the ordered list of all standard diagnostic rules."""
     return [
@@ -783,4 +930,6 @@ def get_default_rules() -> List[BaseRule]:
         SellerVerifiedIdRule(),
         SellerRatingRatioRule(),
         SellerUnverifiedSuspiciousRule(),
+        StaleListingRule(),
+        ContactTimingRule(),
     ]

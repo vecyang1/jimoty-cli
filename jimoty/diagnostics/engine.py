@@ -78,13 +78,16 @@ class DiagnosticEngine:
         has_running_engine = any(
             r.rule_id == "MECH-003-RUNNING_CONFIRMED" and r.passed for r in rules_evaluated
         )
+        is_stale = any(
+            r.rule_id == "ACTIVITY-001-STALE_LISTING" and not r.passed for r in rules_evaluated
+        )
 
         # Score normalization
         if has_fatal:
             # Fatal listings are capped strictly below 40 (typically 5 to 25)
             final_score = max(5, min(raw_score, 25))
             verdict = Verdict.FATAL_REJECT
-        elif raw_score >= 70 and has_valid_papers and has_running_engine:
+        elif raw_score >= 70 and has_valid_papers and has_running_engine and not is_stale:
             final_score = min(100, max(70, raw_score))
             verdict = Verdict.RECOMMENDED
         else:
@@ -101,7 +104,7 @@ class DiagnosticEngine:
         elif verdict == Verdict.RECOMMENDED:
             summary = (
                 "【購入推奨】実動確認済みかつ正規登録書類（廃車申告受付書・譲渡証明書）が揃っており、"
-                "出品者信頼性も良好な優良候補車両です。"
+                "出品者信頼性・出品鮮度も良好な優良候補車両です。"
             )
         else:
             if warning_flags:
@@ -127,5 +130,7 @@ class DiagnosticEngine:
             warning_flags=warning_flags,
             info_flags=info_flags,
             summary=summary,
+            posted_at=detail.created_at.isoformat() if detail.created_at else None,
+            updated_at=detail.updated_at.isoformat() if detail.updated_at else None,
             created_at=now_iso,
         )

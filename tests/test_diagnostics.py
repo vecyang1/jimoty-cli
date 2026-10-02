@@ -11,6 +11,7 @@ Tests deterministic evaluation rules:
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict
 import pytest
 
@@ -280,3 +281,64 @@ class TestScoringModelAndOutputSchema:
         # Must be valid json
         serialized = json.dumps(d)
         assert len(serialized) > 0
+
+
+# ===========================================================================
+# Activity & Contact Timing Audit Tests
+# ===========================================================================
+
+
+class TestActivityAndContactTiming:
+    """Test auditing of listing freshness, stale post penalty, and contact timing etiquette."""
+
+    def test_fresh_listing_scores_bonus(self, engine: Any, sample_jog_detail: ListingDetail) -> None:
+        """A listing updated 2 days ago receives fresh listing bonus and passes activity audit."""
+        sample_jog_detail.updated_at = datetime.now(timezone.utc) - timedelta(days=2)
+        report = engine.diagnose(sample_jog_detail)
+        activity_rules = [r for r in report.rules_evaluated if "ACTIVITY-001" in r.rule_id]
+        assert len(activity_rules) == 1
+        assert activity_rules[0].passed is True
+        assert activity_rules[0].score_impact == 10
+        assert report.posted_at is not None or report.updated_at is not None
+
+    def test_stale_listing_penalized_and_caps_verdict(self, engine: Any, sample_jog_detail: ListingDetail) -> None:
+        """A listing updated 75 days ago triggers warning penalty and prevents RECOMMENDED verdict."""
+        sample_jog_detail.updated_at = datetime.now(timezone.utc) - timedelta(days=75)
+        report = engine.diagnose(sample_jog_detail)
+        activity_rules = [r for r in report.rules_evaluated if "ACTIVITY-001" in r.rule_id]
+        assert len(activity_rules) == 1
+        assert activity_rules[0].passed is False
+        assert activity_rules[0].score_impact == -10
+        assert any("ACTIVITY-001" in f or "更新滞留" in f for f in report.warning_flags)
+        # Even with high base score, verdict is capped at CAUTION
+        assert report.verdict == Verdict.CAUTION
+
+    def test_severely_stale_listing_heavy_penalty(self, engine: Any, sample_jog_detail: ListingDetail) -> None:
+        """A listing updated 130 days ago triggers high staleness penalty (-20)."""
+        sample_jog_detail.updated_at = datetime.now(timezone.utc) - timedelta(days=130)
+        report = engine.diagnose(sample_jog_detail)
+        activity_rules = [r for r in report.rules_evaluated if "ACTIVITY-001" in r.rule_id]
+        assert len(activity_rules) == 1
+        assert activity_rules[0].passed is False
+        assert activity_rules[0].score_impact == -20
+        assert any("放置" in f for f in report.warning_flags)
+
+    def test_contact_timing_rule_evaluates_jst(self, engine: Any, sample_jog_detail: ListingDetail) -> None:
+        """Verify contact timing rule evaluates current JST hour and gives etiquette guidance."""
+        report = engine.diagnose(sample_jog_detail)
+        timing_rules = [r for r in report.rules_evaluated if "ACTIVITY-002" in r.rule_id]
+        assert len(timing_rules) == 1
+        assert timing_rules[0].passed is True
+        assert "日本時間" in timing_rules[0].reasoning
+
+    def test_report_timeline_fields_in_json(self, engine: Any, sample_jog_detail: ListingDetail) -> None:
+        """Verify report dictionary contains posted_at and updated_at fields."""
+        sample_jog_detail.created_at = datetime(2026, 7, 16, 10, 42, tzinfo=timezone.utc)
+        sample_jog_detail.updated_at = datetime(2026, 7, 17, 2, 48, tzinfo=timezone.utc)
+        report = engine.diagnose(sample_jog_detail)
+        d = report.to_dict()
+        assert "posted_at" in d
+        assert "updated_at" in d
+        assert d["posted_at"] == sample_jog_detail.created_at.isoformat()
+        assert d["updated_at"] == sample_jog_detail.updated_at.isoformat()
+
